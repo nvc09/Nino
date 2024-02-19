@@ -1,0 +1,102 @@
+const fs = require("fs");
+const request = require("request");
+const path = require('path');
+const pathToAutoSetNameData = __dirname + '/cache/data/autosetname.json';
+const pathToAntiSpamData = __dirname + '/cache/data/antispamStatus.json';
+const messageCountFolderPath = path.join(__dirname, '../../modules/commands/cache/data/messageCounts');
+const antiImageFilePath = path.join(__dirname, 'cache/data/antiImages/antiImage.json');
+
+module.exports.config = {
+  name: "caidat",
+  version: "1.0.0",
+  hasPermission: 1,
+  credits: "Vtuan",
+  description: "Xem tất cả cài đặt của nhóm!",
+  commandCategory: "Quản Trị Viên",
+  usages: "...",
+  cooldowns: 5,
+};
+
+module.exports.run = async ({ api, event ,Threads, args }) => {
+  var fs = global.nodemodule["fs-extra"];
+  let threadInfo = await api.getThreadInfo(event.threadID);
+  const threadID = event.threadID.toString();
+  
+  let antispamStatusMessage, spamCountMessage, spamTimeMessage, antispams;
+  let autoSetNameMessage;
+  let antiImageStatus;
+  let threadName = threadInfo.threadName;
+  let id = threadInfo.threadID;
+  
+  //data phê duyệt
+  let sex = threadInfo.approvalMode;
+  var pd = sex == false ? 'tắt' : sex == true ? 'bật' : 'Kh';
+
+  //data antispam
+  if (!fs.existsSync(pathToAntiSpamData)) {
+    antispamStatusMessage = "Chưa cài đặt antispam!";
+  } else {
+    let antispamData = JSON.parse(fs.readFileSync(pathToAntiSpamData, "utf-8"));
+    let threadAntiSpam = antispamData.find(item => item.threadID === event.threadID.toString());
+    if (threadAntiSpam && threadAntiSpam.status === true) {
+      antispamStatusMessage = "Bật";
+      spamCountMessage = `${threadAntiSpam.spamCount}`;
+      spamTimeMessage = `${(threadAntiSpam.spamTime / 1000).toFixed(2)}s`;
+      antispams = `${spamCountMessage}|${spamTimeMessage}`
+    } else {
+      antispamStatusMessage = "Tắt";
+      spamCountMessage = "";
+      spamTimeMessage = "";
+      antispams = ``
+    }
+  }
+  
+
+  //data autosetname
+  if (!fs.existsSync(pathToAutoSetNameData)) {
+    autoSetNameMessage = "Không có";
+  } else {
+    let autoSetNameData = JSON.parse(fs.readFileSync(pathToAutoSetNameData, "utf-8"));
+    let threadSetting = autoSetNameData.find(item => item.threadID === event.threadID.toString());
+    if (threadSetting && threadSetting.nameUser && threadSetting.nameUser.length > 0) {
+      autoSetNameMessage = `Bật (${threadSetting.nameUser})`;
+    } else {
+      autoSetNameMessage = "Không có";
+    }
+  }
+
+  ///data antiout
+  let threadData = await Threads.getData(event.threadID);
+  let isAntiOutEnabled = threadData.data && threadData.data.antiout;
+  let antiOutStatusMessage = isAntiOutEnabled ? "Bật" : "Tắt";
+
+  //data checktt all nhóm
+  const currentThreadID = event.threadID;
+  const directoryContent = await fs.readdir(messageCountFolderPath);
+  const messageCountFiles = directoryContent.filter((file) => file.endsWith('.json'));
+  let groupMessageCounts = [];
+  for (const file of messageCountFiles) {
+    const filePath = path.join(messageCountFolderPath, file);
+    const data = await fs.readJson(filePath);
+    const totalMessages = data.reduce((acc, cur) => acc + cur.count, 0);
+    groupMessageCounts.push({ threadID: file.replace('.json', ''), totalMessages });
+  }
+  groupMessageCounts.sort((a, b) => b.totalMessages - a.totalMessages);
+  const currentGroupRank = groupMessageCounts.findIndex(group => group.threadID === currentThreadID) + 1;
+  const currentGroupMessages = groupMessageCounts.find(group => group.threadID === currentThreadID).totalMessages;
+  const totalGroups = groupMessageCounts.length;
+  const msgssss = `Nhóm đứng top: ${currentGroupRank} server với ${currentGroupMessages} tin nhắn`;
+
+
+   /// data anti ảnh nhóm
+  try {
+    const antiImageData = fs.readJsonSync(antiImageFilePath);
+    const threadData = antiImageData.find(item => item.id === threadID);
+    antiImageStatus = threadData ? (threadData.status ? "Bật" : "Tắt") : "tắt";
+  } catch (error) {
+    console.error('Không thể đọc dữ liệu từ file antiImage.json', error);
+    antiImageStatus = "Không thể xác định";
+  }
+
+  return api.sendMessage(`== [ Cài Đặt Nhóm ] ==\n────────────\n→ Tên nhóm: ${threadName || "không có"}\n→ ID: ${id}\n→ Phê duyệt: ${pd}\n→ Antispam: ${antispamStatusMessage} ${antispams}\n→ Autosetname: ${autoSetNameMessage}\n→ Antiout: ${antiOutStatusMessage}\n→ Anti ảnh nhóm: ${antiImageStatus}`,event.threadID)
+}

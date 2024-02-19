@@ -1,0 +1,106 @@
+module.exports.config = {
+  hasPermssion: 1, 
+  credits: "Vtuan",
+  name: "antispam", 
+  commandCategory: "Quản Trị Viên",
+  usages: "antispam setspam/on/off [count] [time]",
+  version: "1.0.0", 
+  cooldowns: 0,
+  description: 'Tự động kick người dùng khi spam trong nhóm',
+};
+
+const fs = require("fs-extra");
+let antiSpamStatus = [];
+const path = "./modules/commands/cache/data/antispamStatus.json";
+let usersSpam = {};
+
+if (!fs.existsSync(path)) {
+    fs.writeFileSync(path, JSON.stringify(antiSpamStatus, null, 4));
+} else {
+    antiSpamStatus = JSON.parse(fs.readFileSync(path));
+    if (!Array.isArray(antiSpamStatus)) antiSpamStatus = [];
+}
+
+module.exports.handleEvent = async function({ api, event }) {
+  const { threadID, senderID } = event;
+
+  const threadInfo = await api.getThreadInfo(threadID);
+  const adminIDs = threadInfo.adminIDs.map(admin => admin.id);
+  let adminBot = global.config.ADMINBOT;
+
+  if (adminBot.includes(senderID) || adminIDs.includes(senderID)) return;
+
+  const settings = antiSpamStatus.find(setting => setting.threadID === threadID);
+  if (!settings || !settings.status) return;
+
+  if (!usersSpam[senderID]) {
+      usersSpam[senderID] = { count: 0, start: Date.now() };
+  }
+
+  usersSpam[senderID].count++;
+
+  if (Date.now() - usersSpam[senderID].start > settings.spamTime) {
+      if (usersSpam[senderID].count > settings.spamCount) {
+          api.removeUserFromGroup(senderID, threadID);
+          api.sendMessage({
+              body: `Đã tự động kick ${senderID} do spam`,
+              mentions: [{ tag: `${senderID}`, id: senderID }]
+          }, threadID);
+      }
+      usersSpam[senderID].count = 0;
+      usersSpam[senderID].start = Date.now();
+  }
+};
+
+module.exports.run = async function ({event, api, args}) {
+  const threadID = event.threadID;
+  const infoThread = await api.getThreadInfo(threadID);
+  const adminIDs = infoThread.adminIDs.map(e => e.id);
+  const idBot = api.getCurrentUserID();
+  switch(args[0]) {
+    case "setspam": {
+      if (!adminIDs.includes(idBot)) {
+        api.sendMessage("Bot phải là quản trị viên thì mới setspam được nhé<3", threadID);
+        return;
+      }
+      let newCount = parseInt(args[1]);
+      let newTime = parseInt(args[2]);
+      if (isNaN(newCount) || isNaN(newTime)) {
+        api.sendMessage("Vui lòng cung cấp số lần tin nhắn và thời gian hợp lệ.", threadID);
+        return;
+      }
+      const index = antiSpamStatus.findIndex(setting => setting.threadID === threadID);
+      if (index !== -1) {
+        antiSpamStatus[index].spamCount = newCount;
+        antiSpamStatus[index].spamTime = newTime;
+      } else {
+        antiSpamStatus.push({ threadID, spamCount: newCount, spamTime: newTime, status: false });
+      }
+      fs.writeFileSync(path, JSON.stringify(antiSpamStatus, null, 4));
+      api.sendMessage(`Đã cài đặt scan antispam ${newCount}/${newTime/1000}s\nDùng ${global.config.PREFIX}antispam on để bật chế độ chống spam<3`, threadID);
+    }
+    break;
+    case "on": {
+      const setting = antiSpamStatus.find(setting => setting.threadID === threadID);
+      if (!setting) {
+        api.sendMessage(`Dùng ${global.config.PREFIX}antispam setspam <số tin nhắn> <time> để cài đặt thông số`, threadID);
+        return;
+      }
+      setting.status = true;
+      fs.writeFileSync(path, JSON.stringify(antiSpamStatus, null, 4));
+      api.sendMessage('Đã bật chế độ chống spam!', threadID);
+    }
+    break;
+    case "off": {
+      const setting = antiSpamStatus.find(setting => setting.threadID === threadID);
+      if (setting) {
+        setting.status = false;
+        fs.writeFileSync(path, JSON.stringify(antiSpamStatus, null, 4));
+        api.sendMessage('Đã tắt chế độ chống spam!', threadID);
+      }
+    }
+    break;
+    default:
+      api.sendMessage("dùng antispam setspam/on/off [count] [time]", threadID);
+  }
+};

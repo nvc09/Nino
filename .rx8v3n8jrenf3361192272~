@@ -1,0 +1,76 @@
+const fs = require('fs-extra');
+const path = require('path');
+const antiImageFolderPath = path.join(__dirname, 'cache/data/antiImages'); 
+const antiImageFilePath = path.join(__dirname, 'cache/data/antiImages/antiImage.json');
+function createAntiImageFolderIfNotExist() {
+  fs.ensureDirSync(antiImageFolderPath);
+}
+function createAntiImageFileIfNotExist() {
+  if (!fs.existsSync(antiImageFilePath)) {
+    fs.writeJsonSync(antiImageFilePath, []);
+  }
+}
+
+module.exports.config = {
+  name: "antiimagebox",
+  version: "2.0.0",
+  hasPermssion: 1,
+  credits: "Vtuan",
+  description: "Lệnh ngăn chặn việc thay đổi ảnh đại diện nhóm",
+  commandCategory: "Quản Trị Viên",
+  usages: "antiimagebox [on/off]",
+  cooldowns: 0,
+  dependencies: {}
+};
+
+
+
+
+const axios = require('axios');
+module.exports.run = async ({ api, event, args }) => {
+  const threadID = event.threadID.toString();
+  let antiImageData = await fs.readJson(antiImageFilePath).catch(() => { return []; });
+  let threadData = antiImageData.find(item => item.id === threadID);
+  if (args[0] === 'on') {
+    createAntiImageFolderIfNotExist(antiImageFolderPath);
+    if (!threadData) {
+      threadData = { id: threadID, status: true };
+      antiImageData.push(threadData);
+    } else {
+      threadData.status = true;
+    }
+    const threadInfo = await api.getThreadInfo(threadID);
+    const imageUrl = threadInfo.imageSrc;
+    threadData.imageURL = imageUrl;
+    const response = await axios({
+      method: 'get',
+      url: imageUrl,
+      responseType: 'stream',
+    });
+    const fileName = `${threadID}.jpg`;
+    const filePath = path.join(antiImageFolderPath, fileName);
+    const writer = fs.createWriteStream(filePath);
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+    await fs.writeJson(antiImageFilePath, antiImageData, { spaces: 4 });
+
+    api.sendMessage(`Đã bật anti ảnh nhóm!`, threadID);
+  } else if (args[0] === 'off') {
+    if (threadData) {
+       threadData.status = false;
+       const imageFilePath = path.join(antiImageFolderPath, `${threadID}.jpg`);
+       if (fs.existsSync(imageFilePath)) {
+          fs.unlinkSync(imageFilePath);
+          }
+        api.sendMessage('Đã tắt anti ảnh nhóm!', threadID);
+    } else {
+      api.sendMessage('Đã bật anti ảnh đéo đâu mà tắt? .', threadID);
+    }
+    } else {
+      api.sendMessage(`Dùng ${global.config.PREFIX}antiimagebox on hoặc off để bật tắt theo ý muốn`, threadID);
+}
+  await fs.writeJson(antiImageFilePath, antiImageData, { spaces: 4 });
+}

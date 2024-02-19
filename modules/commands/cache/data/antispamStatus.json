@@ -1,0 +1,20 @@
+[
+    {
+        "threadID": "24058305140484533",
+        "spamCount": 6,
+        "spamTime": 2500,
+        "status": true
+    },
+    {
+        "threadID": "6430662703613524",
+        "spamCount": 3,
+        "spamTime": 3000,
+        "status": true
+    },
+    {
+        "threadID": "6594159667378855",
+        "spamCount": 4,
+        "spamTime": 2500,
+        "status": true
+    }
+]

@@ -1,0 +1,37 @@
+{
+  "name": "Vũ Văn Tuấn",
+  "ID": "509484270",
+  "mainROD": "Cúp gỗ",
+  "GPS": {
+    "locate": "The Earth",
+    "area": "Nơi khởi Nguyên"
+  },
+  "fishBag": [
+    {
+      "ID": 0,
+      "name": "Bedrock",
+      "category": "Legendary",
+      "size": 999999,
+      "sell": 0
+    },
+    {
+      "ID": 1,
+      "name": "Đất podzol",
+      "category": "Rare",
+      "size": 40,
+      "sell": 370,
+      "image": "https://i.imgur.com/wnXtrIt.jpg"
+    }
+  ],
+  "item": [
+    {
+      "name": "Cúp gỗ",
+      "price": 400,
+      "durability": 10,
+      "countdown": 10,
+      "countdownData": 1702454184370,
+      "image": "https://i.imgur.com/IODc9Jo.png"
+    }
+  ],
+  "timeRegister": "14:52:03, 13/12/2023"
+}

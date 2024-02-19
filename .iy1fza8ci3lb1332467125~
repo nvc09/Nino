@@ -1,0 +1,191 @@
+const fs = require('fs-extra');
+const path = require('path');
+const messageCountFolderPath = path.join(__dirname, '../../modules/commands/cache/data/DataTinNhan');
+async function createIfNotExist(filePath) {
+  if (!await fs.pathExists(filePath)) {
+    await fs.writeJson(filePath, []);
+  }
+}
+
+
+module.exports.config = {
+  name: "checktt",
+  version: "1.0.0",
+  hasPermssion: 0,
+  credits: "Vtuan",
+  description: "Tính số lượng tin nhắn của mỗi thành viên.",
+  commandCategory: "Nhóm",
+  usages: "[ID hoặc all]",
+  cooldowns: 5
+};
+async function createIfNotExist(filePath) {
+  if (!await fs.pathExists(filePath)) {
+    await fs.writeJson(filePath, []);
+  }
+}
+
+async function addNewMembersToMessageCount(api, threadID) {
+  const threadFilePath = path.join(messageCountFolderPath, `${threadID}.json`);
+  let messageCountData = await fs.readJson(threadFilePath);
+  const threadInfo = await api.getThreadInfo(threadID);
+  const currentParticipantIDs = new Set(threadInfo.participantIDs);
+  for (const userID of currentParticipantIDs) {
+    if (!messageCountData.some(user => user.userID === userID)) {
+      messageCountData.push({ userID, count: 0, name  });
+    }
+  }
+  
+  messageCountData.sort((a, b) => b.count - a.count);
+  messageCountData.forEach((user, index) => {
+    user.rank = index + 1;
+  });
+  await fs.writeJson(threadFilePath, messageCountData);
+}
+
+
+
+
+module.exports.run = async ({ api, event, args }) => {
+  const threadID = event.threadID;
+  const threadFilePath = path.join(messageCountFolderPath, `${threadID}.json`);
+  await createIfNotExist(threadFilePath);
+  let messageCountData = await fs.readJson(threadFilePath);
+  let totalMessages = messageCountData.reduce((acc, cur) => acc + cur.count, 0);
+  let totalUsers = messageCountData.length;
+  
+  let groupMessageCounts = [];
+  const directoryContent = await fs.readdir(messageCountFolderPath);
+  for (const file of directoryContent.filter((file) => file.endsWith('.json'))) {
+    const filePath = path.join(messageCountFolderPath, file);
+    const data = await fs.readJson(filePath);
+    const totalMessages = data.reduce((acc, cur) => acc + cur.count, 0);
+    groupMessageCounts.push({ threadID: file.replace('.json', ''), totalMessages });
+  }
+  groupMessageCounts.sort((a, b) => b.totalMessages - a.totalMessages);
+  let currentGroupRank = groupMessageCounts.findIndex(group => group.threadID === threadID) + 1;
+  let totalGroups = groupMessageCounts.length;
+
+
+  const threadInfo = await api.getThreadInfo(event.threadID);
+  
+  const ic = require('./../../Data_Vtuan/datajson/icon.json');
+  var icon = ic[Math.floor(Math.random() * ic.length)].trim();
+  
+  
+  let msg = ``;
+    if (args[0] === 'all') {
+      const participantIDs = threadInfo.participantIDs.map((participant) => participant.toString());
+      messageCountData = messageCountData.filter((userInfo) => participantIDs.includes(userInfo.userID));
+      msg += `== [ Interact Allin ] ==\n`;
+      messageCountData.sort((a, b) => b.count - a.count);
+      messageCountData.forEach(userInfo => {
+        msg += `${userInfo.rank}. ${userInfo.name || `UserID: ${userInfo.userID}`} (${userInfo.count})\n`;
+      });
+      msg += `\n▱▱▱▱▱▱▱▱▱▱▱▱▱\n→ Tổng: ${totalMessages} tin nhắn và xếp thứ ${currentGroupRank}/${totalGroups} nhóm.`;
+    } else {
+      let userID;
+      if (event.type === 'message_reply') {
+        userID = event.messageReply.senderID;
+      } else if (Object.keys(event.mentions).length > 0) {
+        userID = Object.keys(event.mentions)[0];
+      } else {
+        userID = args[0] || event.senderID;
+      }
+
+      var permission;
+      if (global.config.ADMINBOT.includes(userID)) {
+        permission = `Admin Bot`;
+      } else if (global.config.NDH.includes(userID)) {
+        permission = `Người Hỗ Trợ`;
+      } else if (threadInfo.adminIDs.some(i => i.id === userID)) {
+        permission = `Quản Trị Viên`;
+      } else {
+        permission = `Thành Viên`;
+      }
+
+      const userMessageCountData = messageCountData.find(u => u.userID === userID.toString());
+      if (userMessageCountData) {
+        const userName = userMessageCountData.name || `UserID: ${userID}`;
+        const percentageOfInteractions = ((userMessageCountData.count / totalMessages) * 100).toFixed(2);
+        const top20PercentThreshold = Math.ceil(totalUsers * 0.2);
+        const top60PercentThreshold = Math.ceil(totalUsers * 0.6);
+        
+        let tuongTac;
+        if (userMessageCountData.rank <= top20PercentThreshold) {
+          tuongTac = 'tốt';
+        } else if (userMessageCountData.rank <= top60PercentThreshold) {
+          tuongTac = 'bình thường';
+        } else {
+          tuongTac = 'ít';
+        }
+
+        if (userMessageCountData.rank === 1) {
+          
+          msg = `[ ! ] ‣ Tương tác trong nhóm\n▱▱▱▱▱▱▱▱▱▱▱▱▱\ [${icon}]→ Name: ${userName}\n→ Chức vụ: ${permission} \n→ Hiện đang đứng đầu với ${userMessageCountData.count} tin nhắn.\n→ Tỉ lệ tương tác: ${percentageOfInteractions}%\nMức độ tương tác: ${tuongTac}\n`;
+          if (messageCountData.length > 1) {
+            const nextUser = messageCountData[1];
+            msg += `🥈Top 2: ${nextUser.name || `UserID: ${nextUser.userID}`}(${nextUser.count}).\n▱▱▱▱▱▱▱▱▱▱▱▱▱\n`;
+            
+          }
+        } else {
+          const topUser = messageCountData[0];
+          msg = `[ ! ] ‣ Tương tác trong nhóm\n▱▱▱▱▱▱▱▱▱▱▱▱▱\n[${icon}]→ Name: ${userName}\n→ Chức vụ: ${permission}\n→ Hiện đang đứng thứ ${userMessageCountData.rank} với ${userMessageCountData.count} tin nhắn.\n→ Tỉ lệ tương tác: ${percentageOfInteractions}%\n→ Mức độ tương tác: ${tuongTac}\n`;
+          msg += `🥇Người dẫn đầu là ${topUser.name || `UserID: ${topUser.userID}`} với ${topUser.count} tin nhắn.\n▱▱▱▱▱▱▱▱▱▱▱▱▱\n`;
+        }
+      } else {
+        msg = `Không tìm thấy số tương tác cho người dùng này.`;
+      }
+    }
+
+    return api.sendMessage(msg, threadID);
+  };
+
+
+
+module.exports.handleEvent = async ({ api, event }) => {
+const threadID = event.threadID;
+const threadFilePath = path.join(messageCountFolderPath, ${threadID}.json);
+await createIfNotExist(threadFilePath);
+let messageCountData = await fs.readJson(threadFilePath);
+const threadInfo = await api.getThreadInfo(threadID);
+for (const userID of threadInfo.participantIDs) {
+const userExists = messageCountData.some(user => user.userID === userID);
+if (!userExists) {
+const userInfo = await api.getUserInfo(userID);
+const userName = userInfo[userID].name || "Unknown";
+messageCountData.push({ userID, count: 0, name: userName });
+}
+}
+const senderID = event.senderID.toString();
+let userMessageData = messageCountData.find(user => user.userID === senderID);
+if (userMessageData) {
+userMessageData.count += 1;
+} else {
+try {
+const userInfo = await api.getUserInfo(senderID);
+userMessageData = {
+userID: senderID,
+count: 1,
+rank: messageCountData.length + 1,
+name: userInfo[senderID].name
+};
+messageCountData.push(userMessageData);
+} catch (error) {
+userMessageData = { userID: senderID, count: 1, rank: messageCountData.length + 1, name: "Unknown"};
+messageCountData.push(userMessageData);
+}
+}
+messageCountData.sort((a, b) => b.count - a.count);
+messageCountData.forEach((user, index) => { user.rank = index + 1; });
+await fs.writeJson(threadFilePath, messageCountData, { spaces: 2 });
+};
+
+function customStringify(arr) {
+return '[\n' + arr.map(obj => {
+const userID = {\n "userID": "${obj.userID}",;
+const count = \n "count": ${obj.count},;
+const name = \n "name": "${obj.name}";
+const rank = \n "rank": ${obj.rank}\n };
+return userID + count + name + rank;
+}).join(',\n') + '\n]';
+}

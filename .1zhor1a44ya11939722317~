@@ -1,0 +1,78 @@
+const fs = require('fs-extra');
+const path = require('path');
+
+module.exports.config = {
+  name: "lọc",
+  version: "1.0.0",
+  hasPermssion: 3,
+  credits: "Vtuan",
+  description: "Lọc thành viên",
+  commandCategory: "Nhóm",
+  usages: "[Số nguyên dương]",
+  cooldowns: 5,
+  dependencies: {
+    "fs-extra": ""
+  }
+};
+
+module.exports.run = async ({ api, event, args }) => {
+  const messageCountFolderPath = path.join(__dirname, 'cache/data/DataTinNhan');
+  const threadFilePath = path.join(messageCountFolderPath, `${event.threadID}.json`);
+  await createIfNotExist(threadFilePath);
+
+  let messageCountData = await fs.readJson(threadFilePath);
+  const threadInfo = await api.getThreadInfo(event.threadID);
+  const botID = api.getCurrentUserID();
+  const isAdmin = threadInfo.adminIDs.some(admin => admin.id.toString() === botID);
+
+  if (!isAdmin) {
+    api.sendMessage("Bot cần là quản trị viên để sử dụng chức năng này.", event.threadID);
+    return;
+  }
+
+  const minMessages = parseInt(args[0]);
+  if (isNaN(minMessages) || minMessages < 0) {
+    api.sendMessage("Vui lòng nhập một số nguyên dương.", event.threadID);
+    return;
+  }
+
+  let currentMemberIDs = threadInfo.participantIDs.map(id => id.toString());
+  let kickedMembers = [];
+  for (let i = messageCountData.length - 1; i >= 0; i--) {
+    const memberData = messageCountData[i];
+    if (currentMemberIDs.includes(memberData.userID)) {
+      if (memberData.userID === botID.toString()) {
+        continue;
+      }
+      if (memberData.count <= minMessages) {
+        try {
+          await api.removeUserFromGroup(memberData.userID, event.threadID);
+          kickedMembers.push(memberData.name || `UserID: ${memberData.userID}`);
+          messageCountData.splice(i, 1); 
+        } catch (error) {
+          console.error(`Không thể kick người dùng ${memberData.name} (${memberData.userID}):`, error);
+        }
+      }
+    } else {
+      messageCountData.splice(i, 1);
+    }
+  }
+  messageCountData.sort((a, b) => b.count - a.count);
+  messageCountData.forEach((user, index) => {
+    user.rank = index + 1;
+  });
+
+  await fs.writeJson(threadFilePath, messageCountData);
+
+  if (kickedMembers.length > 0) {
+    api.sendMessage(`Đã kick thành viên với số tin nhắn <= ${minMessages}:\n- ${kickedMembers.join('\n- ')}`, event.threadID);
+  } else {
+    api.sendMessage(`Không có thành viên nào với số tin nhắn <= ${minMessages}.`, event.threadID);
+  }
+};
+
+async function createIfNotExist(filePath) {
+  if (!await fs.pathExists(filePath)) {
+    await fs.writeJson(filePath, []);
+  }
+}
